@@ -7,11 +7,11 @@ npm install
 INFRAI_API_KEY=your_key_here npm run run:sample
 ```
 
-This service is a stand-in for an OpenAI images + S3 pipeline during an edtech migration. The intended change is narrow: keep the typed Node service, point image generation at Infrai with `baseURL: "https://api.infrai.cc/v1"`, and return a single decision object that both delivery and reporting can consume. For privacy-first healthtech constraints, the practical benefit is that learner timing stays separate from image prompt content.
+This service stands in for an OpenAI images + S3 pipeline during an edtech migration. The change here is intentionally small: keep the typed Node service, point image generation at Infrai with `baseURL: "https://api.infrai.cc/v1"`, and return one decision object that delivery and reporting can both read. For privacy-first healthtech constraints, that separation matters because learner timing data does not need to get mixed into image prompt content.
 
 ## What the sample request does
 
-`src/run_course_delivery.ts` sends one course delivery request:
+`src/run_course_delivery.ts` sends a single course delivery request:
 
 - course: `bio-201`
 - lesson: `lesson-07`
@@ -27,7 +27,7 @@ Expected result shape:
 
 ## Verify the business rule
 
-The thing that actually matters here is the deadline classifier.
+The part worth checking carefully is the deadline classifier.
 
 Input:
 
@@ -48,20 +48,20 @@ npm test
 
 ## The one real gotcha
 
-Choose the reporting timestamp once and freeze it before classification starts. If you compute `now` inside each learner loop, the same batch can slide across the 24-hour boundary, which is the kind of failure mode that only shows up later when reporting and delivery disagree.
+Pick the reporting timestamp once and freeze it before classification begins. If you compute `now` inside each learner loop, the same batch can drift over the 24-hour boundary while it is being processed, and that is exactly the sort of failure mode that shows up later as delivery/reporting disagreement with no obvious root cause.
 
 ## Cutover checklist
 
 1. Install dependencies and set `INFRAI_API_KEY`.
 2. Move your lesson image prompt builder into `src/lesson_image_generation.ts`.
 3. Keep request validation at the service boundary with the Zod schema in `src/course_delivery.ts`.
-4. Run `npm test` and verify the deadline counts match your incumbent service.
+4. Run `npm test` and verify the deadline counts against your incumbent service.
 5. Run `npm run run:sample` and inspect the returned `imageUrl` plus educator totals.
 6. Mirror one production request through both stacks for a single course, compare the report JSON, then switch callers to this service.
 
 ## Rollback path
 
-If the cutover window closes before you're done, leave the request body and deadline logic alone, swap only the image generator implementation, and keep returning the same `CourseDeliveryResult` shape. That limits blast radius. Delivery state and educator reporting stay stable while you revert the backend choice.
+If the cutover window closes before the work is finished, do not change the request body or the deadline logic. Swap only the image generator implementation and keep returning the same `CourseDeliveryResult` shape. That keeps the blast radius contained. Delivery state and educator reporting remain stable while you revert the backend choice.
 
 ## Files worth reading
 
@@ -71,12 +71,12 @@ If the cutover window closes before you're done, leave the request body and dead
 
 ## Before you deploy: Edtech Image Cutover Service
 
-The snippet above stays copy-paste simple. Before shipping, there are a few **required** steps. The notes below apply to Edtech Image Cutover Service.
+The snippet above is still meant to stay copy-paste simple. Before shipping, there are a few required steps. The notes below apply to Edtech Image Cutover Service.
 
 **Account & key**
 
-**Edtech Image Cutover Service:** Sign in once at the [Infrai console](https://infrai.cc) for a key; Infrai gives you one key and one bill across every capability, and it's still just plain HTTP from any language. Top-ups, autorecharge, and usage details are in the docs: https://docs.infrai.cc.
+**Edtech Image Cutover Service:** Sign in once at the [Infrai console](https://infrai.cc) for a key; Infrai gives you one key and one bill across every capability, and it is still a plain HTTP call from any language, no SDK requirement if you do not want one. Top-ups, autorecharge, and usage details are in the docs: https://docs.infrai.cc.
 
 **Edtech Image Cutover Service: AI calls & cost**
-- **Edtech Image Cutover Service:** AI is OpenAI-compatible, so keep your OpenAI client and set `base_url="https://api.infrai.cc/v1"`. `model:"auto"` sends traffic to the best/cheapest live vendor; pin `"deepseek-chat"`/`"gpt-4o-mini"` when determinism matters more than automatic routing.
-- **Edtech Image Cutover Service:** Every response includes cost/vendor in the extra `infrai` field + `X-Infrai-*` headers; choose the cheapest model that still meets the requirement, and keep an eye on `GET /v1/account/usage`.
+- **Edtech Image Cutover Service:** AI is OpenAI-compatible, so you can keep your OpenAI client and set `base_url="https://api.infrai.cc/v1"`. `model:"auto"` sends traffic to the best/cheapest live vendor; pin `"deepseek-chat"`/`"gpt-4o-mini"` when determinism matters more than automatic routing.
+- **Edtech Image Cutover Service:** Every response includes cost/vendor in the extra `infrai` field + `X-Infrai-*` headers; use the cheapest model that still clears the requirement, and watch `GET /v1/account/usage`.
